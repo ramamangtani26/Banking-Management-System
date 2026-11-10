@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banking System</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--tx:#14213d;--mu:#5c677d;--ac:#1d4ed8;--bd:#dde3ee;--ok:#15803d;--er:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1424;--card:#172036;--tx:#e8ecf5;--mu:#9aa6bf;--ac:#6b9bff;--bd:#2a3550;--ok:#4ade80;--er:#f87171}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,sans-serif}
+.w{max-width:820px;margin:0 auto;padding:20px 16px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:18px;margin-bottom:16px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}.mu{color:var(--mu);font-size:13px}
+label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px}
+input,select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+button{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer;margin-top:14px}
+button.s{background:transparent;color:var(--ac);border:1px solid var(--ac);margin:0}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}nav button{margin:0}
+.m{margin-top:12px;padding:10px;border-radius:8px;font-size:14px}
+.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.er{background:color-mix(in srgb,var(--er) 15%,transparent);color:var(--er)}
+.t{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.r{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="w">
+<div id="login" class="c" style="max-width:380px;margin:40px auto">
+  <h1>🏦 Banking System</h1><p class="mu">Sign in to continue</p>
+  <label>Username</label><input id="u" value="admin" autocomplete="username">
+  <label>Password</label><input id="p" type="password" autocomplete="current-password">
+  <button onclick="login()">Login</button><div id="lm"></div>
+</div>
+
+<div id="app" hidden>
+  <div class="r"><h1>🏦 Banking System</h1><button class="s" onclick="logout()">Logout</button></div>
+  <nav id="nav"></nav>
+
+  <div class="c" id="v-add"><h2>Add Account</h2>
+    <label>Type</label><select id="a-type"><option value="SAVINGS">Savings</option><option value="CURRENT">Current</option><option value="STUDENT">Student</option></select>
+    <label>Holder name</label><input id="a-name">
+    <label>Opening balance (₹)</label><input id="a-bal" type="number" min="0" value="1000">
+    <button onclick="addAcc()">Create account</button><div id="a-m"></div></div>
+
+  <div class="c" id="v-dep" hidden><h2>Deposit</h2>
+    <label>Account number</label><input id="d-no" type="number">
+    <label>Amount (₹)</label><input id="d-amt" type="number" min="0" step="0.01">
+    <button onclick="tx('deposit','d')">Deposit</button><div id="d-m"></div></div>
+
+  <div class="c" id="v-wd" hidden><h2>Withdraw</h2>
+    <label>Account number</label><input id="w-no" type="number">
+    <label>Amount (₹)</label><input id="w-amt" type="number" min="0" step="0.01">
+    <button onclick="tx('withdraw','w')">Withdraw</button><div id="w-m"></div></div>
+
+  <div class="c" id="v-list" hidden><h2>Accounts</h2>
+    <input id="q" placeholder="Search by name or account number" oninput="load()">
+    <div class="t" style="margin-top:12px"><table><thead><tr><th>No.</th><th>Holder</th><th>Type</th><th>Balance</th><th></th></tr></thead><tbody id="tb"></tbody></table></div>
+    <div id="hist"></div></div>
+</div>
+</div>
+
+<script>
+// >>> After deploying the backend, set this to your backend URL (no trailing slash):
+const API_URL = "http://localhost:8080";
+
+let token = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2});
+const msg = (id, t, ok) => { $(id).className = "m " + (ok ? "ok" : "er"); $(id).textContent = t; };
+
+async function api(path, method = "GET", body) {
+  const headers = {"Content-Type": "application/json"};
+  if (token) headers.Authorization = "Bearer " + token;
+  let r;
+  try { r = await fetch(API_URL + path, {method, headers, body: body ? JSON.stringify(body) : undefined}); }
+  catch (e) { throw new Error("Cannot reach the server. It may be waking up, try again in a moment."); }
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401 && token) { logout(); throw new Error("Session expired. Please log in again."); }
+  if (!r.ok) throw new Error(d.message || "Request failed (" + r.status + ")");
+  return d;
+}
+
+async function login() {
+  try {
+    const d = await api("/api/auth/login", "POST", {username: $("u").value, password: $("p").value});
+    token = d.token; $("login").hidden = true; $("app").hidden = false; show("add");
+  } catch (e) { msg("lm", e.message, false); }
+}
+function logout() { token = null; $("app").hidden = true; $("login").hidden = false; $("p").value = ""; }
+
+const tabs = [["add","Add Account"],["dep","Deposit"],["wd","Withdraw"],["list","Accounts"]];
+$("nav").innerHTML = tabs.map(t => `<button id="n-${t[0]}" class="s" onclick="show('${t[0]}')">${t[1]}</button>`).join("");
+function show(v) {
+  tabs.forEach(t => { $("v-" + t[0]).hidden = t[0] !== v; });
+  if (v === "list") load();
+}
+
+async function addAcc() {
+  try {
+    const d = await api("/api/accounts", "POST", {holderName: $("a-name").value, type: $("a-type").value, openingBalance: Number($("a-bal").value)});
+    msg("a-m", "Account created. Account number: " + d.accountNumber, true); $("a-name").value = "";
+  } catch (e) { msg("a-m", e.message, false); }
+}
+
+async function tx(kind, p) {
+  const no = $(p + "-no").value, amt = $(p + "-amt").value;
+  if (!no) return msg(p + "-m", "Enter an account number.", false);
+  try {
+    const d = await api(`/api/accounts/${encodeURIComponent(no)}/${kind}`, "POST", {amount: amt === "" ? null : Number(amt)});
+    msg(p + "-m", `${kind === "deposit" ? "Deposited" : "Withdrew"} ${inr(d.amount)}. New balance: ${inr(d.balanceAfter)}`, true);
+  } catch (e) { msg(p + "-m", e.message, false); }
+}
+
+async function load() {
+  try {
+    const list = await api("/api/accounts?search=" + encodeURIComponent($("q").value));
+    $("tb").innerHTML = list.map(a => `<tr><td>${a.accountNumber}</td><td>${esc(a.holderName)}</td><td>${esc(a.type)}</td><td>${inr(a.balance)}</td><td><button class="s" onclick="hist(${a.accountNumber})">History</button></td></tr>`).join("");
+    $("hist").innerHTML = "";
+  } catch (e) { $("hist").innerHTML = `<div class="m er">${esc(e.message)}</div>`; }
+}
+
+async function hist(no) {
+  try {
+    const list = await api(`/api/accounts/${no}/transactions`);
+    $("hist").innerHTML = `<h2 style="margin-top:16px">Transactions for ${no}</h2><div class="t"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance after</th></tr></thead><tbody>` +
+      list.map(t => `<tr><td>${new Date(t.createdAt).toLocaleString()}</td><td>${esc(t.type)}</td><td>${inr(t.amount)}</td><td>${inr(t.balanceAfter)}</td></tr>`).join("") + "</tbody></table></div>";
+  } catch (e) { $("hist").innerHTML = `<div class="m er">${esc(e.message)}</div>`; }
+}
+</script>
+</body>
+</html>

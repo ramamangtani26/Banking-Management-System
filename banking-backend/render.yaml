@@ -1,0 +1,34 @@
+# Render Blueprint: creates the PostgreSQL database + the web service together.
+databases:
+  - name: banking-db
+    plan: free
+    databaseName: banking
+    user: banking
+
+services:
+  - type: web
+    name: banking-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_HOST
+        fromDatabase: { name: banking-db, property: host }
+      - key: DB_PORT
+        fromDatabase: { name: banking-db, property: port }
+      - key: DB_NAME
+        fromDatabase: { name: banking-db, property: database }
+      - key: DB_USER
+        fromDatabase: { name: banking-db, property: user }
+      - key: DB_PASSWORD
+        fromDatabase: { name: banking-db, property: password }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false          # you will be asked to enter this in the Render dashboard
+      - key: CORS_ORIGINS
+        value: "*"           # replace with your frontend URL after deploying it
